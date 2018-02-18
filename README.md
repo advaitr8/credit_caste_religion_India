@@ -1,2 +1,2 @@
-# credit_caste_religion_India
-Using network analysis and Bayesian multilevel models to study access to credit in Indian villages
+# Access to credit in Indian villages controlling for religion and caste effects
+The goal of this project is to study the borrowing behavior in villages in Karnataka. I use borrowing as a proxy for "access to credit". I set up a hierarchical Bayesian model that studies access to credit as a function of social engagement, while controlling for node level caste and religion effects. The dependent variable is the degree of each node in the borrowing network and the predictor is the degree of each node in the social engagement network. [Relevant questions asked to the respondents; "whom did you borrow money from?", "whom do you socially engage with?"]
