@@ -1,0 +1,1204 @@
+---
+title: "Caste, religion and access to credit in Karnataka's villages"
+author: "Advait Rajagopal"
+date: "December 18, 2017"
+output:
+  pdf_document: default
+  html_document: default
+bibliography: caste_credit_engage.bib
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r global_options, include=FALSE}
+knitr::opts_chunk$set(fig.align='center', fig.path='Figs/',
+                      echo=TRUE, warning=FALSE, message=FALSE)
+```
+
+
+
+# Overview 
+- Analyzing networks has the potential to provide insight into human behavior and interactions. Gaining an understanding of the structures of networks, the central agents in networks and the density of relationships can shed light on how information spreads in a village and ultimately how people behave [@jackson2014networks]. Cultural factors and institutions in rural development are intertwined [@arora2015cultures] and factors like caste have the potential to impact social relations. 
+- The goal of this project is to study the borrowing behavior in villages in Karnataka. I use borrowing as a proxy for "access to credit". I want to study the relationship between borrowing and social engagement in villages while explicitly accounting for caste level variation. By obtaining caste level coefficients for the relation between social engagement and borrowing, we can understand whether some castes have a higher coefficient associated with a given level of social engagement suggesting that this predicts higher access to credit.
+- In order to obtain an overall regression coefficient as well as caste level coefficients simultaneously, I use  Bayesian hierarchical model with partial pooling across castes (see @gelman2013bayesian, ch. 5 for a clear explanation of Bayesian hierarchical models and partial pooling). The dependent variable is the degree (number of connections each node has) of each node in the borrowing network and the predictor is the degree of each node in the social engagement network. 
+  - Relevant questions asked to the respondents: "whom did you borrow money from?", "whom do you socially engage with?"
+- Important reasons for using a Bayesian hierarchical model with partial pooling include
+  - In enables me to use the hierarchical modeling structure to get both overall regression coefficients and caste level coefficients at the same time
+  - Once nodes without covariate information are dropped, the sample size within group (i.e within caste) can become very small. Using informative prior information can help with inference in cases where there are very small samples in a subgroup.
+  - Partially pooling across castes allows me to model my belief that nodes belonging to different castes are neither exactly the same, nor completely different.
+
+## The dataset
+
+- The network dataset is compiled by the MIT based "Abdul Latif Jameel Poverty Action Lab". It is a network dataset that contains relational data about borrowing, lending, social activities and other behavioral patterns. It also has demographic data that includes information about occupation, religion, caste, education, migration patterns and a lot more. There is data for 77 villages, containing household level information and individual level information. The data is available at
+<https://dataverse.harvard.edu/dataset.xhtml?persistentId=hdl:1902.1/21538>
+
+## Limitations
+
+- Many of the questions that form the adjacency matrices for the networks in this dataset are one dimensional and do not indicate the direction of the relationship between the two nodes. For example, consider the question, "whom did you borrow money from?", we don't know who the borrower is and who the lender is, and matrices are considered symmetric. If $y_{ij} = 1$ in the matrix then I interpret this as individual $i$ and $j$ have a relationship where they offer each other credit. 
+- Missing covariate information for most of the nodes in the network has also been problematic. This should be addressed and accounted for in further expansions of this study with appropriate weighting etc.
+- The only covariate I account for is caste. This is because I want to set up the modeling structure and understand relationships before controlling for additional covariate information. This is an essential next step in the process and I hope to do this in future
+- Errors in this document are all mine, please reach out to me at rajaa598@newschool.edu for more information, suggestions, and corrections.
+
+
+## How this poster is organized
+- I have arbitrarily selected village 74 (the dataset is huge and this is an experiment that I hope to scale to other villages in the future)
+- First, I explore the dataset, color the nodes according to the caste attributes and set up network graphs.
+- Second, I set up models to reflect some of the patterns in the dataset and my choice of probability distribution reflects the nature of the distribution of degree centrality in "borrowing" and "social engagement" networks.
+  - I set up a Normal model to predict degree in "borrowing" networks. I do this because the normal distribution is easy to udnerstand and the coefficient is easy to interpret. The downside is that the support of the Normal distribution is from $-\infty$ to $+\infty$ and it is a continuous distribution. These features are not ideal for non-negative discrete data, i.e degree centrality of nodes in "borrowing" networks.
+  - I set up a Poisson model to predict degree in "borrowing" networks. The Poisson is correct for modeling discrete values, but the coefficients are harder to interpret.
+- Lastly, I validate my models with posterior predictive checks and interpret the results of the modeling exercise and conclude.
+
+# Exploratory data analysis
+<!-- I load the necessary packages and libraries first. -->
+```{r, results='hide', message=F, warning=F, echo = F }
+#rm(list = ls())
+library(statnet)
+library(foreign)
+library(rstan)
+rstan_options(auto_write = TRUE)
+options(mc.cores = parallel::detectCores())
+library(broom)
+library(knitr)
+####
+```
+
+- The datasets I use are the:
+  - individual covariate information
+  - borrowing money in village 74 (adjacency matrix indicating who borrowed money from whom)
+  - social engagement in village 74 (adjacency matrix indicating who socially engages with whom)
+
+- In order to explore the datasets, we want to first understand how many people/nodes in the village actually have covariate information. Data collection in the field and in developing countries can often be difficult and so there is a lot of missing covariate information. Ultimately I find that there are 193 nodes with covariate information
+
+
+<!-- Now I import the necessary datasets. -->
+```{r, echo = F}
+#############
+#village 74
+#############
+#import the ids of individuals in village 74
+ind_ids_74 <- read.csv("/Users/Advait/Desktop/New_School/Fall17/Network_data/village_data/datav4.0/Data/1. Network Data/Adjacency Matrix Keys/key_vilno_74.csv",header = F)
+
+#Borrowing Money
+bor_money_74 <- read.csv("/Users/Advait/Desktop/New_School/Fall17/Network_data/village_data/datav4.0/Data/1. Network Data/Adjacency Matrices/adj_borrowmoney_vilno_74.csv", header = F)
+
+#Social Engagement
+social_eng_74 <- read.csv("/Users/Advait/Desktop/New_School/Fall17/Network_data/village_data/datav4.0/Data/1. Network Data/Adjacency Matrices/adj_nonrel_vilno_74.csv", header = F)
+
+
+#Remember to drop rows and columns for nodes that dont have covariate information!
+#import covariate info
+#give the vertices attributes, tricky because of missing data
+indiv_data <- read.dta("/Users/Advait/Desktop/New_School/Fall17/Network_data/village_data/datav4.0/Data/2. Demographics and Outcomes/individual_characteristics.dta")
+```
+
+```{r, echo = F}
+#look at their ids
+good_people_74 <- indiv_data$pid[indiv_data$village == 74]
+# length(good_people_74)
+```
+
+```{r, echo =  F, results = F}
+###I am starting over because of this data. tie individual ids to the adjacency matrix and drop those rows and columns
+ind_ids_74$integer_ident <- seq(1:743)
+#relevant people are ind_ids_74 with the missing data dropped
+# ind_ids_74 <- ind_ids_74[,1:2]
+good_ind_id_74 <- ind_ids_74[ind_ids_74$V1 %in% good_people_74,]
+
+#relevant BORROW nodes
+test1 <- as.matrix(bor_money_74)
+test1 <- test1[good_ind_id_74$integer_ident,good_ind_id_74$integer_ident]
+dim(test1)
+
+#relevant SOCIAL_ENG nodes
+test2 <- as.matrix(social_eng_74)
+test2 <- test2[good_ind_id_74$integer_ident,good_ind_id_74$integer_ident]
+dim(test2)
+```
+
+- I then make the necessary network objects. Once I have changed the simple adjacency matrices into network objects, I am able to plot the degree distribution. Below we can see the degree distributions of these networks. The degree distribution appears to be positively skewed with few popular or high degree nodes and most nodes with a low degree.
+```{r, echo = FALSE}
+#Make network objects
+#borowing
+net_good_bor_74 <- as.network(x = test1, 
+                              directed = FALSE, 
+                              loops = FALSE,
+                              matrix.type = "adjacency")
+#social eng
+net_good_soc_74 <- as.network(x = test2, 
+                              directed = FALSE, 
+                              loops = FALSE,
+                              matrix.type = "adjacency")
+```
+
+```{r, echo = FALSE}
+###degree distribution
+par(mfcol = c(1,2))
+hist(degree(net_good_bor_74),
+     breaks = 12,
+     col = "gray",
+     xlab = "degree distribution",
+     main = "degree dist-borrowing",
+     yaxt = 'n',
+     ylab = NA,
+     freq = F,
+     xlim = c(0,20))
+#
+hist(degree(net_good_soc_74),
+     breaks = 12,
+     col = "gray",
+     xlab = "degree distribution",
+     main = "degree dist-soc engage",
+     yaxt = 'n',
+     ylab = NA,
+     freq = F,
+     xlim = c(0,20))
+```
+
+- Now I examine the covariate information and add the "caste" information as a node level covariate to the network object. After adding the node level covariate as an attribute, I summarize the important network statitics below.
+
+```{r, echo = F, results = F}
+#EXPLORE attributes
+#1. caste
+caste_74 <- indiv_data$caste[indiv_data$village == 74]
+# length(caste_74)
+set.vertex.attribute(net_good_bor_74,
+                     "caste",
+                     as.character(caste_74))
+set.vertex.attribute(net_good_soc_74,
+                     "caste",
+                     as.character(caste_74))
+#2. religion
+religion_74 <- indiv_data$religion[indiv_data$village == 74]
+set.vertex.attribute(net_good_bor_74,
+                     "religion",
+                     as.character(religion_74))
+set.vertex.attribute(net_good_soc_74,
+                     "religion",
+                     as.character(religion_74))
+```
+
+### Borrowing network (dependent variable)
+
+| Borrowing network | Value | 
+|:------------------|:-----:|
+| Vertices          | 193   |
+| Total Edges       | 372   |
+| Missing Edges     | 0     |
+| Non-missing Edges | 372   |
+| Density           | 0.02  |
+
+### Social Engagement network (independent variable)
+
+| Social Engagement network | Value | 
+|:--------------------------|:-----:|
+| Vertices                  | 193   |
+| Total Edges               | 362   |
+| Missing Edges             | 0     |
+| Non-missing Edges         | 362   |
+| Density                   | 0.02  |
+
+### Covariate
+- Caste attribute of the nodes;
+
+| Caste attribute  | Value | 
+|:-----------------|:-----:|
+| General          | 3     |
+| OBC              | 147   |
+| SC               | 42    |
+| ST               | 1     |
+| Total            | 193   |
+
+<!-- - Religion attribute of the node; -->
+
+<!-- | Religion attribute | Value |  -->
+<!-- |:-------------------|:-----:| -->
+<!-- | Hindusim           | 161   | -->
+<!-- | Islam              | 32    | -->
+<!-- | Total              | 193   | -->
+
+
+```{r, echo = F, results = F}
+#summarize networks
+# summary.network(net_good_bor_74,
+#                 print.adj = FALSE)
+# summary.network(net_good_soc_74,
+#                 print.adj = FALSE)
+```
+ - I plot the networks of borrowing and social engagement side by side with nodes colored to represent caste. The node sizes reflect the degree of each node. We observe that there are mostly OBC (other backward class) and SC (scheduled caste) nodes with very few general and just one ST (scheduled tribe) node. OBC, general/forward, SC, ST account for roughly 41%, 31%, 19% and 9% of the Indian population total. It is surprising that even though there are only 3 "general" nodes they appear to be quite popular and have decent access to credit. This becomes even more significant at the time of modeling. The one ST node is also a potential challenge to modeling as inference is difficult with smaller sample sizes.
+
+<!-- I prepare the networks for plotting by adding atrribute based colors. -->
+```{r, echo=F}
+#add colors based on attributes
+#####
+#Caste
+#####
+num_nodes <- 193
+node_colors <- rep("",num_nodes)
+for(i in 1:num_nodes){
+  if(get.node.attr(net_good_bor_74,"caste")[i] == "GENERAL"){
+    node_colors[i] <- "black"
+  }
+  if(get.node.attr(net_good_bor_74,"caste")[i] == "OBC"){
+    node_colors[i] <- "salmon"
+  }
+  if(get.node.attr(net_good_bor_74,"caste")[i] == "SCHEDULED CASTE"){
+    node_colors[i] <- "lightblue"
+  }
+  if(get.node.attr(net_good_bor_74,"caste")[i] == "SCHEDULED TRIBE"){
+    node_colors[i] <- "red"
+  }
+}
+num_nodes <- 193
+node_colors <- rep("",num_nodes)
+for(i in 1:num_nodes){
+  if(get.node.attr(net_good_soc_74,"caste")[i] == "GENERAL"){
+    node_colors[i] <- "black"
+  }
+  if(get.node.attr(net_good_soc_74,"caste")[i] == "OBC"){
+    node_colors[i] <- "salmon"
+  }
+  if(get.node.attr(net_good_soc_74,"caste")[i] == "SCHEDULED CASTE"){
+    node_colors[i] <- "lightblue"
+  }
+  if(get.node.attr(net_good_soc_74,"caste")[i] == "SCHEDULED TRIBE"){
+    node_colors[i] <- "red"
+  }
+}
+```
+
+
+```{r, echo = FALSE}
+par(mfcol = c(1,2),
+    mar = c(2,2,2,2))
+plot.network(net_good_bor_74, # our network object
+             vertex.col = node_colors,
+             displaylabels = F,
+             main = "caste in vil 74 - borrow money",
+             cex.main = 0.8,
+             vertex.cex = (degree(net_good_bor_74))/5)
+# legend(70,2,
+#        legend = c("general", "OBC", "SC", "ST"),
+#        col = c("black","salmon","lightblue","red"),
+#        pch = 16,
+#        bty = 'n',
+#        cex = 0.5,
+#        xpd=TRUE)
+plot.network(net_good_soc_74, # our network object
+             vertex.col = node_colors,
+             displaylabels = F,
+             main = "caste in vil 74 - soc eng",
+             cex.main = 0.8,
+             vertex.cex = (degree(net_good_soc_74))/5)
+legend('bottomright',
+       legend = c("general", "OBC", "SC", "ST"),
+       col = c("black","salmon","lightblue","red"),
+       pch = 16,
+       bty = 'n',
+       cex = 0.5,
+       xpd=TRUE)
+```
+The "general" nodes are black, "OBC" are salmon, "SC" are light blue and "ST" is red.
+```{r, echo = F, results  = F}
+#####
+#Religion
+#####
+num_nodes <- 193
+node_colors <- rep("",num_nodes)
+for(i in 1:num_nodes){
+  if(get.node.attr(net_good_bor_74,"religion")[i] == "HINDUISM"){
+    node_colors[i] <- "darkorange"
+  }
+  if(get.node.attr(net_good_bor_74,"religion")[i] == "ISLAM"){
+    node_colors[i] <- "green"
+  }
+}
+num_nodes <- 193
+node_colors <- rep("",num_nodes)
+for(i in 1:num_nodes){
+  if(get.node.attr(net_good_soc_74,"religion")[i] == "HINDUISM"){
+    node_colors[i] <- "darkorange"
+  }
+  if(get.node.attr(net_good_soc_74,"religion")[i] == "ISLAM"){
+    node_colors[i] <- "green"
+  }
+}
+```
+
+<!--  - I then plot the same networks this time showing the religion of the nodes. There are more "Hindu" nodes than "Islam"" nodes. We see that a large section of Islam nodes borrrow money only internally. It is also clear that Islam nodes generally are connected to each other and their connections to the rest of the network are through other Islam nodes. The network homophily needs closer examination.  -->
+<!-- ```{r, echo=FALSE} -->
+<!-- par(mfcol = c(1,2), -->
+<!--     mar = c(2,2,2,2)) -->
+<!-- plot.network(net_good_bor_74, -->
+<!--              vertex.col = node_colors, -->
+<!--              displaylabels = F, -->
+<!--              main = "religion - borrow money", -->
+<!--              cex.main = 0.8, -->
+<!--              vertex.cex = (degree(net_good_soc_74))/5) -->
+<!-- # legend(70,2, -->
+<!-- #        legend = c("hindu", "islam"), -->
+<!-- #        col = c("darkorange","green"), -->
+<!-- #        pch = 16, -->
+<!-- #        bty = 'n', -->
+<!-- #        cex = 0.5, -->
+<!-- #        xpd = TRUE) -->
+<!-- plot.network(net_good_soc_74, -->
+<!--              vertex.col = node_colors, -->
+<!--              displaylabels = F, -->
+<!--              main = "religion - social eng", -->
+<!--              cex.main = 0.8, -->
+<!--              vertex.cex = (degree(net_good_soc_74))/5) -->
+<!-- legend('bottomright', -->
+<!--        legend = c("hindu", "islam"), -->
+<!--        col = c("darkorange","green"), -->
+<!--        pch = 16, -->
+<!--        bty = 'n', -->
+<!--        cex = 0.5, -->
+<!--        xpd = TRUE) -->
+<!-- ``` -->
+<!-- The "hindu" nodes are orange and the "islam" nodes are green. -->
+
+# Hierarchical Models
+- I set up a normal model and a Poisson model to capture the relationship between social engagement and access to credit. 
+
+- As mentioned in the introduction, the normal model fits a hierarchical linear regression and is useful because it has easily interpretable coefficients. Each coefficient can be seen as the effect on the outcome variable. The drawbacks of the normal distribution for modeling degrees of nodes are that, (i) the support of the normal distribution extends into the negative half of the real line and (ii) it is a continuous distribution, and we are modeling discrete degrees of nodes, which is not strictly correct.
+
+- The Poisson model is appropriate because we model a discrete distribution for count data and given that we are modeling degree distributions this seems more correct. 
+
+- The Poisson model performs marginally better than the Normal model in its ability to predict the longer right hand tail of the degree distribution and the positively skewed nature of the degree distribution.
+
+<!-- - I first consider "caste" level effects and then "religion" level effects. It might be possible to build both effects into one model but I have not done this for now as I would prefer to interpret these coefficients separately. -->
+
+- I use Stan [@carpenter2017stan] to sample from the joint posterior of the observed and unobservable quantities. Stan uses a Hamiltonian Monte Carlo (HMC) algorithm (one from a broader class of MCMC sampling methods) [@betancourt2017conceptual] to accomplish this. The posterior distribution is proportional to the product of the prior and likelihood.
+
+<!-- #-------------------------------------# -->
+<!-- # Caste # -->
+<!-- #-------------------------------------# -->
+
+<!-- # Modeling caste level effects -->
+## Normal model for caste level effects
+
+### Model fitting
+The full model is described in the equations below;
+\[
+\begin{aligned}
+p(deg_{bor} | deg_{social}, \beta_0, \beta_{1}) &\sim \mathcal{N}(\beta_0 + \beta_{1_{c}}.deg_{social_{c}}, \sigma^2)\\
+\beta_0 &\sim \mathcal{N}(0,1)\\
+\beta_{1_{c}} &\sim \mathcal{N}(\mu_c,\tau_c)\\
+\mu_c &\sim \mathcal{N}(0,0.5)\\
+\tau_c &\sim Cauchy^+(0,10)\\
+\sigma & \sim Cauchy^+(0,10)
+\end{aligned}
+\]
+The first equation in this set is the likelihood function (the probability of the dependent variable conditional on the independent variable and the model parameters). The rest of the equations are priors on the parameters.
+
+I fit a normal model where $\beta_1$ is the slope coefficient that measures the caste specific marginal effect of social engagement degree on the degree in the borrowing network. I use weakly informative [@gelman2017prior] normal priors on the parameters $\beta_0$, $\beta_1$ and $\mu_c$. I use a half-Cauchy prior on variances $\tau_c$ and $\sigma$ as this distribution has most of its mass at the mean 0 but has smooth slopes and long tails placing some mass significantly away from 0 allowing variance to creep into the model [@gelman2006prior], but simultaneously constraining the space the chains of the HMC have to explore.
+
+```{r, echo = F}
+#model preparation
+deg_74 <- degree(net_good_bor_74)
+deg_social_eng <- degree(net_good_soc_74)
+rel_74 <- as.numeric(as.factor(get.node.attr(net_good_bor_74,"religion")))
+cas_74 <- as.numeric(as.factor(get.node.attr(net_good_bor_74,"caste")))
+N <- length(deg_74)
+#marginal posteriors
+c_vec <- c("gen","obc","sc","st")
+r_vec <- c("hinduism","islam")
+```
+
+```{r, results="hide", echo=F}
+#normal model for caste
+apsta_4 <- "
+data{
+  int <lower = 0> N;
+  real deg_74[N];
+  int cas_74[N];
+  real deg_social_eng[N];
+}
+parameters{
+  real b0;
+  real b1[4];
+  real <lower = 0> sigma;
+  real mu_c;
+  real <lower = 0> tau_c;
+}
+model{
+  for(i in 1:N){
+    deg_74[i] ~ normal(b0 + b1[cas_74[i]]*deg_social_eng[i], sigma);
+  }
+  b0 ~ normal(0,1);
+  b1 ~ normal(mu_c,tau_c);
+  mu_c ~ normal(0,0.5);
+  tau_c ~ cauchy(0,10);
+  sigma ~ cauchy(0,10);
+}
+generated quantities{
+  real y_pred[N];
+  for(i in 1:N){
+    y_pred[i] = normal_rng(b0 + b1[cas_74[i]]*deg_social_eng[i], sigma);
+  }
+}
+"
+fit1 <- stan(model_code = apsta_4,
+             data = list("N",
+                         "deg_74",
+                         "cas_74",
+                         "deg_social_eng"),
+             iter = 1000,
+             chains = 3)
+```
+
+### Posterior distribution of the estimated parameters
+```{r,echo=F}
+ext1 <- extract(fit1)
+# print(fit1, pars = c("b0","b1","mu_c","tau_c"))
+sum_ext1 <- summary(fit1, 
+                    pars = c("b0","b1","mu_c","tau_c"),
+                    probs = c(0.025, 0.975))$summary
+kable(signif(sum_ext1, digits = 2))
+```
+
+Based on the above table we have obtained the posterior distribution for $\beta_1$ and there are four of these for each caste. We can see the 95% posterior interval for the parameters. We see the model converges well as the Rhat [@carpenter2017stan] values are very close to 1.
+
+I plot the marginal posterior distributions of the parameters below.
+
+```{r, echo = F}
+# #normal model caste
+l_95_caste <- rep(NA, 4)
+u_95_caste <- rep(NA, 4)
+#
+par(col = "gray")
+for(i in 1:4){
+# plot(density(ext1$b1[,i]),
+#      main = c_vec[i],
+#      xlim = c(0,1.2),
+#      bty = 'n',
+#      yaxt = 'n',
+#      ylab = NA,
+#      xlab = NA)
+#   abline(v = mean(ext1$b1[,i]),
+#          col = "red")
+  l_95_caste[i] <- quantile(ext1$b1[,i], probs = 0.025)
+  u_95_caste[i] <- quantile(ext1$b1[,i], probs = 0.975)
+}
+plot(colMeans(ext1$b1)[order(colMeans(ext1$b1))],
+     c(1,2,3,4),
+     xlim = c(-0.56,1.4),
+     main = "access to credit vs. social engagement (caste level effects)",
+     cex.main = 0.9,
+     pch = 16,
+     col = "black",
+     cex = 0.8,
+     yaxt = 'n',
+     xaxt = 'n',
+     xlab = NA,
+     ylab = NA)
+axis(2,
+     at = c(1,2,3,4),
+     labels = c_vec[order(colMeans(ext1$b1))],
+     las = 2,
+     tck = -0.03,
+     col = "gray",
+     cex = 0.8)
+axis(1,
+     at = seq(-0.56,1.4, by = 0.4),
+     col = "gray",
+     cex = 0.8)
+abline(h = c(1,2,3,4),
+       lty = 3,
+       col = 'gray')
+l_95_caste <- l_95_caste[order(colMeans(ext1$b1))]
+u_95_caste <- u_95_caste[order(colMeans(ext1$b1))]
+# l_95_caste <- -1.96*apply(ext1$b1,2,sd)[order(colMeans(ext1$b1))]
+# u_95_caste <- 1.96*apply(ext1$b1,2,sd)[order(colMeans(ext1$b1))]
+arrows(x0 = colMeans(ext1$b1)[order(colMeans(ext1$b1))],
+       y0 = c(1,2,3,4),
+       x1 = l_95_caste,
+       y1 = c(1,2,3,4),
+       col = "gray",
+       length = 0,
+     lwd = 1.5)
+arrows(x0 = colMeans(ext1$b1)[order(colMeans(ext1$b1))],
+       y0 = c(1,2,3,4),
+       x1 = u_95_caste,
+       y1 = c(1,2,3,4),
+       col = "gray",
+       length = 0,
+     lwd = 1.5)
+points(colMeans(ext1$b1)[order(colMeans(ext1$b1))],
+     c(1,2,3,4),
+     col = "black",
+     pch = 16,
+     cex = 0.8)
+# legend('topleft',
+#        legend = c("estimate", "95% posterior interval"),
+#        col = c("black", "gray"),
+#        bty = 'n',
+#        pch = c(16,NA),
+#        lty = c(NA,1),
+#        cex = 0.8,
+#        text.col = "black" )
+```
+- The posterior intervals of the $\beta_1$ parameters and there are 4 (one for each caste). corresponding to "general", "OBC", "SC" and "ST" respectively. 
+- We see that even with three data points the model picks up on the fact that being of the "general" category predisposes you to have a higher degree in the borrowing network. This suggests that the historically "upper" caste, despite being a minority has more access to credit. This is potentially an important result. It is worthwhile to check this with other networks that have different compositions of castes to make sure that this conclusion holds there as well. 
+
+- The "general" and "ST" coefficients having very large error bars or uncertainty intervals. This is because there are only 3 general nodes and 1 ST node. 
+
+- It is interesting that despite the small samples in these two groups we are able to obtain stable regression coefficients. We also find that the general group's coefficient is highest. The general, SC and OBC posterior distributions exclude 0, and the ST interval includes 0. This suggests that there may be an effect for the first three but not for ST. However this could also be because there is only one ST node and inherently brings in uncertainty into the estimate. The model needs to be scaled to other networks to examine the patterns.
+
+### Posterior predictive checking
+I now engage in posterior predictive checking. Using my normal model I predict the degree distribution for the borrowing network and compare it to the raw data. I plot the histogram of the raw data. The light blue lines are simulated values for the dependent variable (degree of nodes in the borrowing network). The black line is the true density distribution of the dependent variable.
+
+```{r, echo = F}
+library(RColorBrewer)
+preds_caste <- as.matrix(fit1)[,9:201]
+preds_caste_all <- c()
+hist(deg_74,
+     col = "lightgray",
+     breaks = 10,
+     freq = F,
+     yaxt = 'n',
+     ylab = NA,
+     xlim = c(0,20),
+     ylim = c(0,0.2),
+     main = "posterior predictive checking for the normal model",
+     xlab = "degree distribution")
+for(i in 1:1000){
+  preds_plot <- sample(preds_caste, 1000)
+  preds_caste_all <- c(preds_caste_all, mean(preds_plot))
+  lines(density(preds_plot),
+        col=brewer.pal(3,"Blues"))
+}
+lines(density(deg_74),
+      col = "black")
+
+```
+ - We see that the normal distribution has a longer right tail, but it cannot quite capture the positively skewed degree distribution. The mean of the simulations is slightly to the right of the true distribution. This is because we have modeled the distribution of degrees as normal when it is clearly poisitively skewed and the outcome variable is non negative integral values. 
+
+## Poisson model for caste level effects
+
+### Model fitting
+The full model is described in the equations below;
+
+\[
+\begin{aligned}
+p(deg_{bor} | deg_{social},\beta_{1}) &\sim \text{Poisson}(\beta_{1_{c}}.deg_{social_{c}})\\
+\beta_{1_{c}} &\sim \mathcal{N}(\mu_c,\tau_c)\\
+\mu_c &\sim \mathcal{N}(1,1)\\
+\tau_c &\sim Cauchy^+(0,10)\\
+\end{aligned}
+\]
+Like the previous set of equations, the first equation here is the likelihood function and the other equations are priors on the parameters. Here the Poisson parameter is a function of the predictor variable. This model is appropriate because the Poisson distribution is discrete and does not support the negative half of the real line. This accurately reflects the nature of the degree of a node in borrowing networks. 
+
+
+```{r, results="hide", echo = F}
+#poisson model for caste
+apsta_5 <- "
+data{
+  int <lower = 0> N;
+  int deg_74[N];
+  int cas_74[N];
+  int deg_social_eng[N];
+}
+parameters{
+  # real <lower = 0.1> b0;
+  real <lower = 0.1> b1[4];
+  real <lower = 0.1> mu_c;
+}
+model{
+  for(i in 1:N){
+    deg_74[i] ~ poisson(b1[cas_74[i]]*deg_social_eng[i]);
+  }
+  b1 ~ exponential(mu_c);
+  mu_c ~ exponential(2);
+  # b0 ~ exponential(2);
+}
+generated quantities{
+  real y_pred[N];
+  for(i in 1:N){
+    y_pred[i] = poisson_rng(b1[cas_74[i]]*deg_social_eng[i]);
+  }
+}
+"
+fit2 <- stan(model_code = apsta_5,
+             data = list("N",
+                         "deg_74",
+                         "cas_74",
+                         "deg_social_eng"),
+             iter = 1000,
+             chains = 3)
+```
+
+### Posterior distribution of the estimated parameters
+```{r, echo = F}
+ext2 <- extract(fit2)
+# print(fit2, pars = c("b1","mu_c"))
+sum_ext2 <- summary(fit2, 
+                    pars = c("b1","mu_c"),
+                    probs = c(0.025, 0.975))$summary
+kable(signif(sum_ext2, digits = 2))
+```
+
+Based on the above table we have obtained the posterior distribution for $\beta_1$ and there are four of these for each caste. We can see the 95% posterior interval for the parameters. We see the model converges well as the Rhat values are very close to 1.
+
+I plot the marginal posterior distributions of the parameters below.
+
+```{r, echo = F}
+#poisson model caste
+l_95_caste <- rep(NA, 4)
+u_95_caste <- rep(NA, 4)
+#
+par(col = "gray")
+for(i in 1:4){
+  l_95_caste[i] <- quantile(ext2$b1[,i], probs = 0.025)
+  u_95_caste[i] <- quantile(ext2$b1[,i], probs = 0.975)
+}
+plot(colMeans(ext2$b1)[order(colMeans(ext2$b1))],
+     c(1,2,3,4),
+     xlim = c(-0.2,4.2),
+     main = "access to credit vs. social engagement (caste level effects)",
+     cex.main = 0.9,
+     pch = 16,
+     col = "black",
+     cex = 0.8,
+     yaxt = 'n',
+     xaxt = 'n',
+     xlab = NA,
+     ylab = NA)
+axis(2,
+     at = c(1,2,3,4),
+     labels = c_vec[order(colMeans(ext2$b1))],
+     las = 2,
+     tck = -0.03,
+     col = "gray",
+     cex = 0.8)
+axis(1,
+     at = seq(-0.2,4.02, by = 0.2),
+     col = "gray",
+     cex = 0.8)
+abline(h = c(1,2,3,4),
+       lty = 3,
+       col = 'gray')
+l_95_caste <- l_95_caste[order(colMeans(ext2$b1))]
+u_95_caste <- u_95_caste[order(colMeans(ext2$b1))]
+# l_95_caste <- -1.96*apply(ext2$b1,2,sd)[order(colMeans(ext2$b1))]
+# u_95_caste <- 1.96*apply(ext2$b1,2,sd)[order(colMeans(ext2$b1))]
+arrows(x0 = colMeans(ext2$b1)[order(colMeans(ext2$b1))],
+       y0 = c(1,2,3,4),
+       x1 = l_95_caste,
+       y1 = c(1,2,3,4),
+       col = "gray",
+       length = 0,
+       lwd = 1.5)
+arrows(x0 = colMeans(ext2$b1)[order(colMeans(ext2$b1))],
+       y0 = c(1,2,3,4),
+       x1 = u_95_caste,
+       y1 = c(1,2,3,4),
+       col = "gray",
+       length = 0,
+       lwd = 1.5)
+points(colMeans(ext2$b1)[order(colMeans(ext2$b1))],
+     c(1,2,3,4),
+     col = "black",
+     pch = 16,
+     cex = 0.8)
+# legend('bottomright',
+#        legend = c("estimate", "95% posterior interval"),
+#        col = c("black", "gray"),
+#        bty = 'n',
+#        pch = c(16,NA),
+#        lty = c(NA,1),
+#        cex = 0.8,
+#        text.col = "black" )
+```
+ - We estimate 4  values once again, for each caste under considertaion. This time we see that the ST coefficient is the highest followed by the general coefficient. 
+ 
+ - This is a different result than with the normal model where the general coefficient was clearly higher. However, my suspicion is that this purely due to the fact that we have just one data point for ST nodes and the large error bars also suggest that this estimate is not stable. It is still surprising that the general coefficient is higher than the other two ("OBC" and "SC"), somewhat corroborating the result from the normal model. 
+
+- This is merely an introductory exercise and a pattern worth examining in closer detail.
+
+### Posterior predictive checking
+I now plot the posterior predctive checks for the Poisson model with caste effects. Using the Poisson model I predict the degree distribution for the borrowing network and compare it to the raw data. I plot the histogram of the raw data. The light blue lines are simulated values for the dependent variable (degree of nodes in the borrowing network). The black line is the true density distribution of the dependent variable.
+
+```{r, echo = F}
+#posterior predictive check
+preds_caste <- as.matrix(fit2)[,6:199]
+preds_caste_all <- c()
+hist(deg_74,
+     col = "gray",
+     breaks = 10,
+     freq = F,
+     yaxt = 'n',
+     ylab = NA,
+     xlim = c(0,20),
+     ylim = c(0,0.2),
+     main = "posterior predictive checking for the Poisson model",
+     xlab = "degree distribution")
+for(i in 1:1000){
+  preds_plot <- sample(preds_caste, 1000)
+  preds_caste_all <- c(preds_caste_all, mean(preds_plot))
+  lines(density(preds_plot),
+        col=brewer.pal(3,"Blues"))
+}
+lines(density(deg_74),
+      col = "black")
+```
+ - We see that the Poisson distribution captures the positively skewed nature of the distribution. The Poisson model slightly underestimates the density at the mode but has aptly caught and predicted the long right tail. The Poisson model performs better than the normal model in that it captures the central tendency of the degree distribution in borrowing networks as well as the spread of values. 
+
+<!-- <!-- ```{r, results="hide", echo=F} --> -->
+<!-- <!-- #exponential model for caste --> -->
+<!-- <!-- apsta_6 <- " --> -->
+<!-- <!-- data{ --> -->
+<!-- <!--   int <lower = 0> N; --> -->
+<!-- <!--   real deg_74[N]; --> -->
+<!-- <!--   int cas_74[N]; --> -->
+<!-- <!--   real deg_social_eng[N]; --> -->
+<!-- <!-- } --> -->
+<!-- <!-- parameters{ --> -->
+<!-- <!--   real <lower = 0.1> b1[4]; --> -->
+<!-- <!--   real <lower = 0.1> lambda_c; --> -->
+<!-- <!-- } --> -->
+<!-- <!-- model{ --> -->
+<!-- <!--   for(i in 1:N){ --> -->
+<!-- <!--     deg_74[i] ~ exponential(b1[cas_74[i]]*deg_social_eng[i]); --> -->
+<!-- <!--   } --> -->
+<!-- <!--   b1 ~ exponential(lambda_c); --> -->
+<!-- <!--   lambda_c ~ exponential(2); --> -->
+
+<!-- <!-- } --> -->
+<!-- <!-- generated quantities{ --> -->
+<!-- <!--   real y_pred[N]; --> -->
+<!-- <!--   for(i in 1:N){ --> -->
+<!-- <!--     y_pred[i] = exponential_rng(b1[cas_74[i]]*deg_social_eng[i]); --> -->
+<!-- <!--   } --> -->
+<!-- <!-- } --> -->
+<!-- <!-- " --> -->
+<!-- <!-- fit3 <- stan(model_code = apsta_6, --> -->
+<!-- <!--              data = list("N", --> -->
+<!-- <!--                          "deg_74", --> -->
+<!-- <!--                          "cas_74", --> -->
+<!-- <!--                          "deg_social_eng"), --> -->
+<!-- <!--              iter = 1000, --> -->
+<!-- <!--              chains = 3) --> -->
+<!-- <!-- ``` --> -->
+
+<!-- <!-- ```{r, echo = F} --> -->
+<!-- <!-- ext3 <- extract(fit3) --> -->
+<!-- <!-- print(fit3, pars = c("b1","lambda_c")) --> -->
+<!-- <!-- ``` --> -->
+
+<!-- <!-- ```{r, echo = F} --> -->
+<!-- <!-- #exponential model caste --> -->
+<!-- <!-- l_95_caste <- rep(NA, 4) --> -->
+<!-- <!-- u_95_caste <- rep(NA, 4) --> -->
+<!-- <!-- # --> -->
+<!-- <!-- par(col = "gray") --> -->
+<!-- <!-- for(i in 1:4){ --> -->
+<!-- <!--   l_95_caste[i] <- quantile(ext3$b1[,i], probs = 0.025) --> -->
+<!-- <!--   u_95_caste[i] <- quantile(ext3$b1[,i], probs = 0.975) --> -->
+<!-- <!-- } --> -->
+<!-- <!-- plot(colMeans(ext3$b1)[order(colMeans(ext3$b1))], --> -->
+<!-- <!--      c(1,2,3,4), --> -->
+<!-- <!--      xlim = c(-0.1,0.7), --> -->
+<!-- <!--      main = "access to credit vs. social engagement (caste level effects)", --> -->
+<!-- <!--      cex.main = 0.9, --> -->
+<!-- <!--      pch = 16, --> -->
+<!-- <!--      col = "black", --> -->
+<!-- <!--      cex = 0.8, --> -->
+<!-- <!--      yaxt = 'n', --> -->
+<!-- <!--      xaxt = 'n', --> -->
+<!-- <!--      xlab = NA, --> -->
+<!-- <!--      ylab = NA) --> -->
+<!-- <!-- axis(2, --> -->
+<!-- <!--      at = c(1,2,3,4), --> -->
+<!-- <!--      labels = c_vec[order(colMeans(ext3$b1))], --> -->
+<!-- <!--      las = 2, --> -->
+<!-- <!--      tck = -0.03, --> -->
+<!-- <!--      col = "gray", --> -->
+<!-- <!--      cex = 0.8) --> -->
+<!-- <!-- axis(1, --> -->
+<!-- <!--      at = seq(-0.1,0.7, by = 0.2), --> -->
+<!-- <!--      col = "gray", --> -->
+<!-- <!--      cex = 0.8) --> -->
+<!-- <!-- abline(h = c(1,2,3,4), --> -->
+<!-- <!--        lty = 3, --> -->
+<!-- <!--        col = 'gray') --> -->
+<!-- <!-- l_95_caste <- l_95_caste[order(colMeans(ext3$b1))] --> -->
+<!-- <!-- u_95_caste <- u_95_caste[order(colMeans(ext3$b1))] --> -->
+<!-- <!-- # l_95_caste <- -1.96*apply(ext3$b1,2,sd)[order(colMeans(ext3$b1))] --> -->
+<!-- <!-- # u_95_caste <- 1.96*apply(ext3$b1,2,sd)[order(colMeans(ext3$b1))] --> -->
+<!-- <!-- arrows(x0 = colMeans(ext3$b1)[order(colMeans(ext3$b1))], --> -->
+<!-- <!--        y0 = c(1,2,3,4), --> -->
+<!-- <!--        x1 = l_95_caste, --> -->
+<!-- <!--        y1 = c(1,2,3,4), --> -->
+<!-- <!--        col = "gray", --> -->
+<!-- <!--        length = 0) --> -->
+<!-- <!-- arrows(x0 = colMeans(ext3$b1)[order(colMeans(ext3$b1))], --> -->
+<!-- <!--        y0 = c(1,2,3,4), --> -->
+<!-- <!--        x1 = u_95_caste, --> -->
+<!-- <!--        y1 = c(1,2,3,4), --> -->
+<!-- <!--        col = "gray", --> -->
+<!-- <!--        length = 0) --> -->
+<!-- <!-- points(colMeans(ext3$b1)[order(colMeans(ext3$b1))], --> -->
+<!-- <!--      c(1,2,3,4), --> -->
+<!-- <!--      col = "black", --> -->
+<!-- <!--      pch = 16, --> -->
+<!-- <!--      cex = 0.8) --> -->
+<!-- <!-- ``` --> -->
+<!-- <!-- ```{r, echo = F} --> -->
+<!-- <!-- preds_caste <- as.matrix(fit3)[,5:199] --> -->
+<!-- <!-- preds_caste_all <- c() --> -->
+<!-- <!-- hist(deg_74, --> -->
+<!-- <!--      col = "gray", --> -->
+<!-- <!--      breaks = 10, --> -->
+<!-- <!--      freq = F, --> -->
+<!-- <!--      yaxt = 'n', --> -->
+<!-- <!--      ylab = NA, --> -->
+<!-- <!--      xlim = c(0,20), --> -->
+<!-- <!--      ylim = c(0,0.2)) --> -->
+<!-- <!-- for(i in 1:1000){ --> -->
+<!-- <!--   preds_plot <- sample(preds_caste, 1000) --> -->
+<!-- <!--   preds_caste_all <- c(preds_caste_all, mean(preds_plot)) --> -->
+<!-- <!--   lines(density(preds_plot), --> -->
+<!-- <!--         col=brewer.pal(3,"Blues")) --> -->
+<!-- <!-- } --> -->
+<!-- <!-- lines(density(deg_74), --> -->
+<!-- <!--       col = "black") --> -->
+<!-- <!-- ``` --> -->
+
+<!-- <!-- #-------------------------------------# --> -->
+<!-- <!-- # Religion # --> -->
+<!-- <!-- #-------------------------------------# --> -->
+
+<!-- ## Normal model for religion level effects -->
+
+<!-- ### Model fitting -->
+<!-- The full model is given below; -->
+<!-- \[ -->
+<!-- \begin{aligned} -->
+<!-- p(deg_{bor} | deg_{social}, \beta_0, \beta_{1}) &\sim \mathcal{N}(\beta_0 + \beta_{1_{r}}.deg_{social_{r}}, \sigma^2)\\ -->
+<!-- \beta_0 &\sim \mathcal{N}(0,1)\\ -->
+<!-- \beta_1 &\sim \mathcal{N}(\mu_r,\tau_r)\\ -->
+<!-- \mu_c &\sim \mathcal{N}(0,0.5)\\ -->
+<!-- \tau_c &\sim Cauchy^+(0,10)\\ -->
+<!-- \sigma &\sim Cauchy^+(0,10) -->
+<!-- \end{aligned} -->
+<!-- \] -->
+<!-- $\beta_1$ is the slope coefficient that measures the religion specific marginal impact of social engagement degree on the degree in the borrowing network. There are two religions, "hinduism" and "islam". -->
+
+<!-- ```{r, results="hide", echo = F} -->
+<!-- #normal model for religion -->
+<!-- apsta_6 <- " -->
+<!-- data{ -->
+<!--   int <lower = 0> N; -->
+<!--   real deg_74[N]; -->
+<!--   int rel_74[N]; -->
+<!--   real deg_social_eng[N]; -->
+<!-- } -->
+<!-- parameters{ -->
+<!--   real b0; -->
+<!--   real b1[2]; -->
+<!--   real <lower = 0> sigma; -->
+<!--   real mu_r; -->
+<!--   real <lower = 0> tau_r; -->
+<!-- } -->
+<!-- model{ -->
+<!--   for(i in 1:N){ -->
+<!--     deg_74[i] ~ normal(b0 + b1[rel_74[i]]*deg_social_eng[i], sigma); -->
+<!--   } -->
+<!--   b0 ~ normal(0,1); -->
+<!--   b1 ~ normal(mu_r,tau_r); -->
+<!--   mu_r ~ normal(0,0.5); -->
+<!--   tau_r ~ cauchy(0,10); -->
+<!--   sigma ~ cauchy(0,10); -->
+<!-- } -->
+<!-- generated quantities{ -->
+<!--   real y_pred[N]; -->
+<!--   for(i in 1:N){ -->
+<!--     y_pred[i] = normal_rng(b0 + b1[rel_74[i]]*deg_social_eng[i], sigma); -->
+<!--   } -->
+<!-- } -->
+<!-- " -->
+<!-- fit3 <- stan(model_code = apsta_6, -->
+<!--              data = list("N", -->
+<!--                          "deg_74", -->
+<!--                          "rel_74", -->
+<!--                          "deg_social_eng"), -->
+<!--              iter = 1000, -->
+<!--              chains = 3) -->
+<!-- ``` -->
+
+<!-- ### Posterior distribution of the estimated parameters -->
+
+<!-- ```{r, echo = F} -->
+<!-- ext3 <- extract(fit3) -->
+<!-- # print(fit3, pars = c("b0","b1","mu_r","tau_r")) -->
+<!-- sum_ext3 <- summary(fit3,  -->
+<!--                     pars = c("b0", "b1","mu_r", "tau_r"), -->
+<!--                     probs = c(0.025, 0.975))$summary -->
+<!-- kable(signif(sum_ext3, digits = 2)) -->
+<!-- ``` -->
+
+<!-- We see that the model converges well. The coefficient on hindusim ($\beta_1$) is higher indicating that being hindu predisposes a node to a higher degree in the borrowing network if the node is more socially engaged. -->
+<!-- I plot the marginal posterior distributions of the religion level slope parameters. -->
+
+<!-- ```{r, echo = F} -->
+<!-- #normal model religion -->
+<!-- l_95_religion <- rep(NA, 2) -->
+<!-- u_95_religion <- rep(NA, 2) -->
+<!-- # -->
+<!-- par(col = "gray") -->
+<!-- for(i in 1:2){ -->
+<!--   l_95_religion[i] <- quantile(ext3$b1[,i], probs = 0.025) -->
+<!--   u_95_religion[i] <- quantile(ext3$b1[,i], probs = 0.975) -->
+<!-- } -->
+<!-- plot(colMeans(ext3$b1)[order(colMeans(ext3$b1))], -->
+<!--      c(1,2), -->
+<!--      xlim = c(-0.2,1), -->
+<!--      main = "access to credit vs. social engagement (religion level effects)", -->
+<!--      cex.main = 0.9, -->
+<!--      pch = 16, -->
+<!--      col = "black", -->
+<!--      cex = 0.8, -->
+<!--      yaxt = 'n', -->
+<!--      xaxt = 'n', -->
+<!--      xlab = NA, -->
+<!--      ylab = NA) -->
+<!-- axis(2, -->
+<!--      at = c(1,2), -->
+<!--      labels = r_vec[order(colMeans(ext3$b1))], -->
+<!--      las = 2, -->
+<!--      tck = -0.03, -->
+<!--      col = "gray", -->
+<!--      cex = 0.6) -->
+<!-- axis(1, -->
+<!--      at = seq(-0.2,1, by = 0.2), -->
+<!--      col = "gray", -->
+<!--      cex = 0.8) -->
+<!-- abline(h = c(1,2), -->
+<!--        lty = 3, -->
+<!--        col = 'gray') -->
+<!-- l_95_religion <- l_95_religion[order(colMeans(ext3$b1))] -->
+<!-- u_95_religion <- u_95_religion[order(colMeans(ext3$b1))] -->
+<!-- # l_95_religion <- -1.96*apply(ext3$b1,2,sd)[order(colMeans(ext3$b1))] -->
+<!-- # u_95_religion <- 1.96*apply(ext3$b1,2,sd)[order(colMeans(ext3$b1))] -->
+<!-- arrows(x0 = colMeans(ext3$b1)[order(colMeans(ext3$b1))], -->
+<!--        y0 = c(1,2), -->
+<!--        x1 = l_95_religion, -->
+<!--        y1 = c(1,2), -->
+<!--        col = "gray", -->
+<!--        length = 0, -->
+<!--        lwd = 1.5) -->
+<!-- arrows(x0 = colMeans(ext3$b1)[order(colMeans(ext3$b1))], -->
+<!--        y0 = c(1,2), -->
+<!--        x1 = u_95_religion, -->
+<!--        y1 = c(1,2), -->
+<!--        col = "gray", -->
+<!--        length = 0, -->
+<!--        lwd = 1.5) -->
+<!-- points(colMeans(ext3$b1)[order(colMeans(ext3$b1))], -->
+<!--      c(1,2), -->
+<!--      col = "black", -->
+<!--      pch = 16, -->
+<!--      cex = 0.8) -->
+<!-- # legend('bottomright', -->
+<!-- #        legend = c("estimate", "95% posterior interval"), -->
+<!-- #        col = c("black", "gray"), -->
+<!-- #        bty = 'n', -->
+<!-- #        pch = c(16,NA), -->
+<!-- #        lty = c(NA,1), -->
+<!-- #        cex = 0.8, -->
+<!-- #        text.col = "black" ) -->
+<!-- ``` -->
+
+<!-- ### Posterior predictive checking -->
+<!-- I now engage in posterior predictive checking. Using the normal model I predict the degree distribution for the borrowing network and compare it to the raw data. I plot the histogram of the raw data. The light blue lines are simulated values for the dependent variable (degree of nodes in the borrowing network). The black line is the true density distribution of the dependent variable. I plot the posterior predictive checks for the model. -->
+<!-- ```{r, echo=F} -->
+<!-- #posterior predictive check -->
+<!-- preds_religion <- as.matrix(fit3)[,6:192] -->
+<!-- preds_religion_all <- c() -->
+<!-- hist(deg_74, -->
+<!--      col = "gray", -->
+<!--      breaks = 10, -->
+<!--      freq = F, -->
+<!--      yaxt = 'n', -->
+<!--      ylab = NA, -->
+<!--      xlim = c(0,20), -->
+<!--      ylim = c(0,0.2), -->
+<!--      main = "posterior predictive checking for the normal model", -->
+<!--      xlab = "degree distribution") -->
+<!-- for(i in 1:1000){ -->
+<!--   preds_plot <- sample(preds_religion, 1000) -->
+<!--   preds_religion_all <- c(preds_religion_all, mean(preds_plot)) -->
+<!--   lines(density(preds_plot), -->
+<!--         col=brewer.pal(3,"Blues")) -->
+<!-- } -->
+<!-- lines(density(deg_74), -->
+<!--       col = "black") -->
+<!-- ``` -->
+
+<!-- ## Poisson model for religion level effects -->
+
+<!-- ### Model fitting -->
+
+<!-- The full model is described in the equations below; -->
+<!-- \[ -->
+<!-- \begin{aligned} -->
+<!-- p(deg_{bor} | deg_{social},\beta_{1}) &\sim \text{Poisson}(\beta_{1_{r}}.deg_{social_{r}})\\ -->
+<!-- \beta_1 &\sim \mathcal{N}(\mu_r,\tau_r)\\ -->
+<!-- \mu_c &\sim \mathcal{N}(1,0.5)\\ -->
+<!-- \tau_c &\sim Cauchy^+(0,10)\\ -->
+<!-- \end{aligned} -->
+<!-- \] -->
+
+<!-- ```{r, results="hide", echo=F} -->
+<!-- #poisson model for religion -->
+<!-- apsta_7 <- " -->
+<!-- data{ -->
+<!--   int <lower = 0> N; -->
+<!--   int deg_74[N]; -->
+<!--   int rel_74[N]; -->
+<!--   int deg_social_eng[N]; -->
+<!-- } -->
+<!-- parameters{ -->
+<!--   real <lower = 0.1> b1[2]; -->
+<!--   real <lower = 0.1> mu_r; -->
+<!--   # real <lower = 0> tau_r; -->
+<!-- } -->
+<!-- model{ -->
+<!--   for(i in 1:N){ -->
+<!--     deg_74[i] ~ poisson(b1[rel_74[i]]*deg_social_eng[i]); -->
+<!--   } -->
+<!--   b1 ~ exponential(mu_r); -->
+<!--   mu_r ~ exponential(2); -->
+<!--   # tau_r ~ cauchy(0,10); -->
+<!-- } -->
+<!-- generated quantities{ -->
+<!--   real y_pred[N]; -->
+<!--   for(i in 1:N){ -->
+<!--     y_pred[i] = poisson_rng(b1[rel_74[i]]*deg_social_eng[i]); -->
+<!--   } -->
+<!-- } -->
+<!-- " -->
+<!-- fit4 <- stan(model_code = apsta_7, -->
+<!--              data = list("N", -->
+<!--                          "deg_74", -->
+<!--                          "rel_74", -->
+<!--                          "deg_social_eng"), -->
+<!--              iter = 1000, -->
+<!--              chains = 3) -->
+<!-- ``` -->
+
+<!-- ### Posterior distribution of the estimated parameters -->
+
+<!-- ```{r, echo = F} -->
+<!-- ext4 <- extract(fit4) -->
+<!-- # print(fit4, pars = c("b1","mu_r")) -->
+<!-- sum_ext4 <- summary(fit4,  -->
+<!--                     pars = c("b1","mu_r"), -->
+<!--                     probs = c(0.025, 0.975))$summary -->
+<!-- kable(signif(sum_ext4, digits = 2)) -->
+<!-- ``` -->
+
+<!-- I plot the marginal posterior distributions of the religion level parameters. -->
+
+<!-- ```{r, echo = F} -->
+<!-- #poisson model religion -->
+<!-- l_95_religion <- rep(NA, 2) -->
+<!-- u_95_religion <- rep(NA, 2) -->
+<!-- # -->
+<!-- par(col = "gray") -->
+<!-- for(i in 1:2){ -->
+<!--   l_95_religion[i] <- quantile(ext4$b1[,i], probs = 0.025) -->
+<!--   u_95_religion[i] <- quantile(ext4$b1[,i], probs = 0.975) -->
+<!-- } -->
+<!-- plot(colMeans(ext4$b1)[order(colMeans(ext4$b1))], -->
+<!--      c(1,2), -->
+<!--      xlim = c(-0.2,1.2), -->
+<!--      main = "access to credit vs. social engagement (religion level effects)", -->
+<!--      cex.main = 0.9, -->
+<!--      pch = 16, -->
+<!--      col = "black", -->
+<!--      cex = 0.8, -->
+<!--      yaxt = 'n', -->
+<!--      xaxt = 'n', -->
+<!--      xlab = NA, -->
+<!--      ylab = NA) -->
+<!-- axis(2, -->
+<!--      at = c(1,2), -->
+<!--      labels = r_vec[order(colMeans(ext4$b1))], -->
+<!--      las = 2, -->
+<!--      tck = -0.03, -->
+<!--      col = "gray", -->
+<!--      cex = 0.6) -->
+<!-- axis(1, -->
+<!--      at = seq(-0.2,1.2, by = 0.2), -->
+<!--      col = "gray", -->
+<!--      cex = 0.8) -->
+<!-- abline(h = c(1,2), -->
+<!--        lty = 3, -->
+<!--        col = 'gray') -->
+<!-- l_95_religion <- l_95_religion[order(colMeans(ext4$b1))] -->
+<!-- u_95_religion <- u_95_religion[order(colMeans(ext4$b1))] -->
+<!-- # l_95_religion <- -1.96*apply(ext4$b1,2,sd)[order(colMeans(ext4$b1))] -->
+<!-- # u_95_religion <- 1.96*apply(ext4$b1,2,sd)[order(colMeans(ext4$b1))] -->
+<!-- arrows(x0 = colMeans(ext4$b1)[order(colMeans(ext4$b1))], -->
+<!--        y0 = c(1,2), -->
+<!--        x1 = l_95_religion, -->
+<!--        y1 = c(1,2), -->
+<!--        col = "gray", -->
+<!--        length = 0, -->
+<!--        lwd = 1.5) -->
+<!-- arrows(x0 = colMeans(ext4$b1)[order(colMeans(ext4$b1))], -->
+<!--        y0 = c(1,2), -->
+<!--        x1 = u_95_religion, -->
+<!--        y1 = c(1,2), -->
+<!--        col = "gray", -->
+<!--        length = 0, -->
+<!--        lwd = 1.5) -->
+<!-- points(colMeans(ext4$b1)[order(colMeans(ext4$b1))], -->
+<!--      c(1,2), -->
+<!--      col = "black", -->
+<!--      pch = 16, -->
+<!--      cex = 0.8) -->
+<!-- ``` -->
+
+<!-- ### Posterior predictive checking -->
+<!-- I now engage in posterior predictive checking. Using my normal model I predict the degree distribution for the borrowing network and compare it to the raw data. I plot the histogram of the raw data. The light blue lines are simulated values for the dependent variable (degree of nodes in the borrowing network). The black line is the true density distribution of the dependent variable. -->
+
+<!-- ```{r, echo=F} -->
+<!-- preds_religion <- as.matrix(fit4)[,4:193] -->
+<!-- preds_religion_all <- c() -->
+<!-- hist(deg_74, -->
+<!--      col = "gray", -->
+<!--      breaks = 10, -->
+<!--      freq = F, -->
+<!--      yaxt = 'n', -->
+<!--      ylab = NA, -->
+<!--      xlim = c(0,20), -->
+<!--      ylim = c(0,0.2), -->
+<!--      main = "posterior predictive checking for the Poisson model", -->
+<!--      xlab = "degree distribution") -->
+<!-- for(i in 1:1000){ -->
+<!--   preds_plot <- sample(preds_religion, 1000) -->
+<!--   preds_religion_all <- c(preds_religion_all, mean(preds_plot)) -->
+<!--   lines(density(preds_plot), -->
+<!--         col=brewer.pal(3,"Blues")) -->
+<!-- } -->
+<!-- lines(density(deg_74), -->
+<!--       col = "black") -->
+<!-- ``` -->
+
+## Conclusions
+- We observe that degree centrality in the social engagement network is a good predictor of degree centrality in the borrowing network. Social engagement and access to credit are positively related. This is an interesting result and allows the researcher to delve deeper into the dynamics of social engagement in order to introduce social interventions that will aid access to credit in villages.
+
+- We see that the Poisson model really fits the data well and predicts well.
+
+- We find out that belonging to the "general" caste usually means more access to credit.
+
+- There is ambiguity in the religion models as "hinduism" has greater marginal effects in the normal model but "islam" does in the Poisson model.
+
+- As standard practice in Bayesian studies, we must leave the model open for expansion and checking. We performed some posterior predictive checks here but we could potentially expand these models, try different parametrizations and predictors and update our results.
+
+- Criticisms we can offer for the models are that other network statistics have not been examined and this ignores a lot of information. Importantly "assortativity" should be explored more carefully. The missing data also should be accounted for as a lot of information is thrown out when we drop nodes. This is also a study of only one village and almost no generalizations can be made to how communities behave in other villages and how caste and religion dynamics impact the village. Importantly, the multilevel nature of the model should be expanded to incorporate the other villages in the network data into the study in a meaningful way.

@@ -1,0 +1,317 @@
+---
+title: "Final Project - Rajagopal - draft 1"
+author: "Advait Rajagopal"
+date: "December 13, 2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+```{r global_options, include=FALSE}
+knitr::opts_chunk$set(fig.align='center', fig.path='Figs/',
+                      echo=TRUE, warning=FALSE, message=FALSE)
+```
+
+## Research Objective
+
+- The goal of this project is to study the borrowing and lending behavior in villages in Karnataka.
+
+- The network dataset is compiled by "Abdul Latif Jameel Poverty Action Lab" that is located in the economics department at MIT. It is a network dataset that contains relational data about borrowing, lending, social activities and other behavioral patterns. It also has demographic data that includes information about occupation, religion, caste, education, migration patterns and a lot more.There is information about 77 villages, containing household level information and individual level information. 
+
+- Limitations of the data are symmetric adjacency matrices (undirected) for all questions and missing data at the individual (person) node level.
+
+```{r, results='hide', message=F, warning=F }
+#rm(list = ls())
+library(statnet)
+library(ergm)
+library(foreign)
+library(Bergm)
+```
+I have selected village 74 (arbitrarily) and performed some exploratory data analysis, made some plots and tried some ERGM and Bayesian ERGM models.
+
+## Data Munging and Prep
+```{r}
+##Importing data
+#import the ids of individuals in village 74
+ind_ids_74 <- read.csv("/Users/Advait/Desktop/New_School/Fall17/Network_data/village_data/datav4.0/Data/1. Network Data/Adjacency Matrix Keys/key_vilno_74.csv",header = F)
+dim(ind_ids_74)
+
+#import the borrowing adjacency matrix
+bor_money_74 <- read.csv("/Users/Advait/Desktop/New_School/Fall17/Network_data/village_data/datav4.0/Data/1. Network Data/Adjacency Matrices/adj_borrowmoney_vilno_74.csv", header = F)
+dim(bor_money_74)
+```
+
+```{r}
+#create a network object
+net_bor_74 <- as.network(x = bor_money_74, 
+                         directed = FALSE, 
+                         loops = FALSE,
+                         matrix.type = "adjacency")
+#plot it (that looks pretty good)
+plot(net_bor_74,
+     main = "borrowing in village 74")
+#give them names (acc to their individual ids)
+network.vertex.names(net_bor_74) <- ind_ids_74
+```
+
+Now I want to bring in covariate information. 
+```{r}
+#reading in demographic data
+indiv_data <- read.dta("/Users/Advait/Desktop/New_School/Fall17/Network_data/village_data/datav4.0/Data/2. Demographics and Outcomes/individual_characteristics.dta")
+dim(indiv_data[indiv_data$village == 74,])
+```
+
+We realize that a whole bunch of people have no info about the covariate measures, so we throw them out and make a new network. Biased? I think so.
+```{r}
+#look at their ids
+good_people_74 <- indiv_data$pid[indiv_data$village == 74]
+###I am starting over because of this data. tie individual ids to the adjacency matrix and drop those rows and columns
+ind_ids_74$integer_ident <- seq(1:743)
+#relevant people are ind_ids_74 with the missing data dropped
+# ind_ids_74 <- ind_ids_74[,1:2]
+good_ind_id_74 <- ind_ids_74[ind_ids_74$V1 %in% good_people_74,]
+#now to select only the relevant rows and columns from borrow matrix
+test <- as.matrix(bor_money_74)
+test <- test[good_ind_id_74$integer_ident,good_ind_id_74$integer_ident]
+dim(test)
+
+net_good_bor_74 <- as.network(x = test, 
+                              directed = FALSE, 
+                              loops = FALSE,
+                              matrix.type = "adjacency")
+```
+
+Look at the loss of information!
+```{r, echo=FALSE}
+#information lost in missing data
+par(mfcol = c(1,2))
+plot(net_bor_74,
+     main = "vil 74 orig",
+     cex.main = 0.8)
+plot(net_good_bor_74,
+     main = "vil 74 modif",
+     cex.main = 0.8)
+```
+
+Make the good network, give the vertices attributes and so on, make it plot ready.
+
+```{r}
+####
+#give the good network names
+network.vertex.names(net_good_bor_74) <- good_ind_id_74$integer_ident
+####Now I have a nice complete named network for VILL 74!
+
+#explore attributes
+#1. caste
+caste_74 <- indiv_data$caste[indiv_data$village == 74]
+length(caste_74)
+set.vertex.attribute(net_good_bor_74,
+                     "caste",
+                     as.character(caste_74))
+#2. religion
+religion_74 <- indiv_data$religion[indiv_data$village == 74]
+set.vertex.attribute(net_good_bor_74,
+                     "religion",
+                     as.character(religion_74))
+
+#3. english
+english_74 <- indiv_data$english[indiv_data$village == 74]
+set.vertex.attribute(net_good_bor_74,
+                     "english",
+                     as.character(english_74))
+
+#summarize network
+summary.network(net_good_bor_74, 
+                print.adj = FALSE)
+```
+
+## Plotting
+- Degree distribution
+```{r}
+degreedist(net_good_bor_74)
+hist(degree(net_good_bor_74),
+     breaks = 12,
+     col = "gray",
+     main = "histogram of the good network")
+```
+- Caste plots
+```{r}
+#add colors based on attributes
+#####
+#Caste
+#####
+num_nodes <- 193
+node_colors <- rep("",num_nodes)
+for(i in 1:num_nodes){
+  if(get.node.attr(net_good_bor_74,"caste")[i] == "GENERAL"){
+    node_colors[i] <- "black"
+  }
+  if(get.node.attr(net_good_bor_74,"caste")[i] == "OBC"){
+    node_colors[i] <- "salmon"
+  }
+  if(get.node.attr(net_good_bor_74,"caste")[i] == "SCHEDULED CASTE"){
+    node_colors[i] <- "lightblue"
+  }
+  if(get.node.attr(net_good_bor_74,"caste")[i] == "SCHEDULED TRIBE"){
+    node_colors[i] <- "red"
+  }
+}
+#print(node_colors)
+
+plot.network(net_good_bor_74, # our network object
+             vertex.col = node_colors,
+             displaylabels = F,
+             main = "caste in vil 74 - borrow money",
+             cex.main = 0.8)
+legend(70,2,
+       legend = c("general", "OBC", "SC", "ST"),
+       col = c("black","salmon","lightblue","red"),
+       pch = 16,
+       bty = 'n',
+       cex = 0.7)
+```
+
+- Religion plots
+```{r}
+#####
+#Religion
+#####
+num_nodes <- 193
+node_colors <- rep("",num_nodes)
+for(i in 1:num_nodes){
+  if(get.node.attr(net_good_bor_74,"religion")[i] == "HINDUISM"){
+    node_colors[i] <- "darkorange"
+  }
+  if(get.node.attr(net_good_bor_74,"religion")[i] == "ISLAM"){
+    node_colors[i] <- "green"
+  }
+}
+#print(node_colors)
+
+plot.network(net_good_bor_74, 
+             vertex.col = node_colors,
+             displaylabels = F,
+             main = "religion in vil 74 - borrow money",
+             cex.main = 0.8)
+legend(70,2,
+       legend = c("hindu", "islam"),
+       col = c("darkorange","green"),
+       pch = 16,
+       bty = 'n',
+       cex = 0.7)
+```
+
+- English plots
+```{r}
+#####
+#English
+#####
+num_nodes <- 193
+node_colors <- rep("",num_nodes)
+for(i in 1:num_nodes){
+  if(get.node.attr(net_good_bor_74,"english")[i] == "No"){
+    node_colors[i] <- "black"
+  }
+  if(get.node.attr(net_good_bor_74,"english")[i] == "Yes"){
+    node_colors[i] <- "red"
+  }
+}
+#print(node_colors)
+
+plot.network(net_good_bor_74, 
+             vertex.col = node_colors,
+             displaylabels = F,
+             main = "english in vil 74 - borrow money",
+             cex.main = 0.8)
+legend(70,2,
+       legend = c("no english", "yes english"),
+       col = c("black","red"),
+       pch = 16,
+       bty = 'n',
+       cex = 0.7)
+
+```
+
+## Modeling
+- ERGM
+```{r}
+#####
+#trying ergm for vil 74
+#####
+model1_vil74 <- ergm(net_good_bor_74 ~ edges 
+                                     + nodematch('caste', diff = T) 
+                                     + nodematch('religion', diff = T)
+                                     + nodematch('english', diff = T))
+summary(model1_vil74)
+#infinity coefficients are due to 0 within group ties
+```
+```{r}
+#interpreting "edges"
+expit = function(x) 1/(1+exp(-x))
+expit(-8.7115)
+#logg odds of a tie converted to probability of a tie
+```
+
+```{r}
+#for degree
+mod1_74_gof_deg <- gof(model1_vil74 ~ degree)
+plot(mod1_74_gof_deg)
+```
+The black line is inside the gray lines. Good thing?
+
+Note that I tried "triangle"" with the base configuration of ergm and that does not work!, So I go into ergm further controlling "interval size" and "sample size" etc. 
+
+```{r}
+mod2_74 <- ergm(net_good_bor_74 ~ edges 
+                               + kstar(5)
+                               + nodematch('caste', diff = F) 
+                               + nodematch('religion', diff = F)
+                               + nodematch('english', diff = F) ,
+                               control=control.ergm(MCMC.interval=1, 
+                               MCMC.burnin=1000, 
+                               MCMC.samplesize=12000,
+                               seed=1))
+plot(mod2_74)
+```
+
+- Bayesian ERGM
+```{r}
+#trying some Bayesian ergm
+mod1_74_Bayes <- bergm(net_good_bor_74 ~ edges 
+                                       + triangle
+                                       + kstar(5)
+                                       + nodematch('caste', diff = F) 
+                                       + nodematch('religion', diff = F)
+                                       + nodematch('english', diff = F) ,
+                                       burn.in = 500,
+                                       main.iters = 2000,
+                                       aux.iters = 20000)
+#something worked, giant output
+#my instinct was confirmed and it is a multivariate normal prior the length (dimensions) of the number of predictors
+```
+Now we can monitor convergence
+```{r, echo  = FALSE}
+#marginal posterior distributions
+par(mfcol = c(2,3))
+for(i in 1:6){
+plot(density(mod1_74_Bayes$Theta[,i]),
+     main = mod1_74_Bayes$specs[i],
+     bty = 'n',
+     xlab = NA)
+abline(v = mean(mod1_74_Bayes$Theta[,i]), col = "red")
+}
+#monitoring convergence
+par(mfcol = c(2,3))
+for(i in 1:6){
+  plot(mod1_74_Bayes$Theta[,i],
+       main = mod1_74_Bayes$specs[i],
+       type = 'l',
+       bty = 'n',
+       xlab = "iterations",
+       ylab = "")
+  abline(h = mean(mod1_74_Bayes$Theta[,i]), col = "red")
+}
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
