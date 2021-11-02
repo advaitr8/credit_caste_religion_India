@@ -1,7 +1,7 @@
 ---
 title: "Caste, access to credit and social engagement: a network theoretic approach"
-author: "Advait Rajagopal"
-date: "December 18, 2017"
+author: "Advait Aiyer"
+date: "1 November 2021"
 output:
   pdf_document: default
   html_document: default
@@ -10,43 +10,40 @@ bibliography: caste_credit_engage.bib
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+# knitr::opts_chunk$set(dev = 'png')
 ```
 
 ```{r global_options, include=FALSE}
-knitr::opts_chunk$set(fig.align='center', fig.path='Figs/',
+# knitr::opts_chunk$set(fig.align='center', fig.path='Figs/',
+#                       echo=TRUE, warning=FALSE, message=FALSE)
+
+knitr::opts_chunk$set(fig.align='center',
                       echo=TRUE, warning=FALSE, message=FALSE)
 ```
 
 # Overview 
-- Analyzing networks has the potential to provide insight into human behavior and interactions. Gaining an understanding of the structures of networks, the central agents in networks and the density of relationships can shed light on how information spreads in a village and ultimately how people behave [@jackson2014networks]. Cultural factors and institutions in rural development are intertwined [@arora2015cultures] and factors like caste have the potential to impact social relations. 
-- The goal of this project is to study the borrowing behavior in villages in Karnataka. I use borrowing as a proxy for "access to credit". I want to study the relationship between borrowing and social engagement in villages while explicitly accounting for caste level variation. By obtaining caste level coefficients for the relation between social engagement and borrowing, we can understand whether some castes have a higher coefficient associated with a given level of social engagement suggesting that this predicts higher access to credit.
-- In order to obtain an overall regression coefficient as well as caste level coefficients simultaneously, I use  Bayesian hierarchical model with partial pooling across castes (see @gelman2013bayesian, ch. 5 for a clear explanation of Bayesian hierarchical models and partial pooling). The dependent variable is the degree (number of connections each node has) of each node in the borrowing network and the predictor is the degree of each node in the social engagement network. 
-  - Relevant questions asked to the respondents: "whom did you borrow money from?", "whom do you socially engage with?"
-- Important reasons for using a Bayesian hierarchical model with partial pooling include
-  - In enables me to use the hierarchical modeling structure to get both overall regression coefficients and caste level coefficients at the same time
-  - Once nodes without covariate information are dropped, the sample size within group (i.e within caste) can become very small. Using informative prior information can help with inference in cases where there are very small samples in a subgroup.
-  - Partially pooling across castes allows me to model my belief that nodes belonging to different castes are neither exactly the same, nor completely different.
+Analyzing networks has the potential to provide insight into human behavior and interactions. Gaining an understanding of the structures of networks, the central agents in networks and the density of relationships can shed light on how information spreads in a village and ultimately how people behave [@jackson2014networks]. Cultural factors and institutions in rural development are intertwined [@arora2015cultures] and factors like caste have the potential to impact social relations. 
+
+The goal of this project is to study the relationship between access to credit and social engagement in villages in Karnataka. I use borrowing as a proxy for "access to credit". I want to study the relationship between borrowing and social engagement in villages while explicitly accounting for caste level variation. By obtaining caste level coefficients for the relation between social engagement and borrowing, we can understand whether some castes have a higher coefficient associated with a given level of social engagement suggesting that this predicts higher access to credit.
+
+In order to obtain an overall regression coefficient as well as caste level coefficients simultaneously, I use  Bayesian hierarchical model with partial pooling across castes (see @gelman2013bayesian, ch. 5 for a clear explanation of Bayesian hierarchical models and partial pooling). The dependent variable is the degree (number of connections each node has) of each node in the borrowing network and the predictor is the degree of each node in the social engagement network. Relevant questions asked to the respondents: "whom did you borrow money from?", "whom do you socially engage with?"
+
+The main reasons for using a Bayesian hierarchical model with partial pooling include, (i) it enables me to use the hierarchical modeling structure to get both overall regression coefficients and caste level coefficients at the same time, (ii) once nodes without covariate information are dropped, the sample size within group (i.e within caste) can become very small. Using informative prior information can help with inference in cases where there are very small samples in a subgroup, (iii) partially pooling across castes allows me to model my belief that nodes belonging to different castes are neither exactly the same, nor completely different.
 
 ## The dataset
-
-- The network dataset is compiled by the MIT based "Abdul Latif Jameel Poverty Action Lab". It is a network dataset that contains relational data about borrowing, lending, social activities and other behavioral patterns. It also has demographic data that includes information about occupation, religion, caste, education, migration patterns and a lot more. There is data for 77 villages, containing household level information and individual level information. The data is available at
+The network dataset is compiled by the MIT based "Abdul Latif Jameel Poverty Action Lab". It is a network dataset that contains relational data about borrowing, lending, social activities and other behavioral patterns. It also has demographic data that includes information about occupation, religion, caste, education, migration patterns and a lot more. There is data for 77 villages, containing household level information and individual level information. The data is available at
 <https://dataverse.harvard.edu/dataset.xhtml?persistentId=hdl:1902.1/21538>
 
 ## Limitations
+Many of the questions that form the adjacency matrices for the networks in this dataset are one dimensional and do not indicate the direction of the relationship between the two nodes. For example, consider the question, "whom did you borrow money from?", we don't know who the borrower is and who the lender is, and matrices are considered symmetric. If $y_{ij} = 1$ in the matrix then I interpret this as individual $i$ and $j$ have a relationship where they offer each other credit. 
 
-- Many of the questions that form the adjacency matrices for the networks in this dataset are one dimensional and do not indicate the direction of the relationship between the two nodes. For example, consider the question, "whom did you borrow money from?", we don't know who the borrower is and who the lender is, and matrices are considered symmetric. If $y_{ij} = 1$ in the matrix then I interpret this as individual $i$ and $j$ have a relationship where they offer each other credit. 
-- Missing covariate information for most of the nodes in the network has also been problematic. This should be addressed and accounted for in further expansions of this study with appropriate weighting etc.
-- The only covariate I account for is caste. This is because I want to set up the modeling structure and understand relationships before controlling for additional covariate information. This is an essential next step in the process and I hope to do this in future
-- Errors in this document are all mine, please reach out to me at rajaa598@newschool.edu for more information, suggestions, and corrections.
+Missing covariate information for most of the nodes in the network has also been problematic. This should be addressed and accounted for in further expansions of this study with appropriate weighting etc.
+
+The only covariate I account for is caste. This is because I want to set up the modeling structure and understand relationships before controlling for additional covariate information. This is an essential next step in the process and I hope to do this in future
 
 
-## How this poster is organized
-- I have arbitrarily selected village 74 (the dataset is huge and this is an experiment that I hope to scale to other villages in the future)
-- First, I explore the dataset, color the nodes according to the caste attributes and set up network graphs.
-- Second, I set up models to reflect some of the patterns in the dataset and my choice of probability distribution reflects the nature of the distribution of degree centrality in "borrowing" and "social engagement" networks.
-  - I set up a Normal model to predict degree in "borrowing" networks. I do this because the normal distribution is easy to udnerstand and the coefficient is easy to interpret. The downside is that the support of the Normal distribution is from $-\infty$ to $+\infty$ and it is a continuous distribution. These features are not ideal for non-negative discrete data, i.e degree centrality of nodes in "borrowing" networks.
-  - I set up a Poisson model to predict degree in "borrowing" networks. The Poisson is correct for modeling discrete values, but the coefficients are harder to interpret.
-- Lastly, I validate my models with posterior predictive checks and interpret the results of the modeling exercise and conclude.
+## How this paper is organized
+I have arbitrarily selected village 74 (the dataset is huge and this is an experiment that I hope to scale to other villages in the future). First, I explore the dataset, color the nodes according to the caste attributes and set up network graphs. Second, I set up models to reflect some of the patterns in the dataset and my choice of probability distribution reflects the nature of the distribution of degree centrality in "borrowing" and "social engagement" networks. I set up a Normal model to predict degree in "borrowing" networks. I do this because the normal distribution is easy to udnerstand and the coefficient is easy to interpret. The downside is that the support of the Normal distribution is from $-\infty$ to $+\infty$ and it is a continuous distribution. These features are not ideal for non-negative discrete data, i.e degree centrality of nodes in "borrowing" networks. I then set up a Poisson model to predict degree in "borrowing" networks. The Poisson is correct for modeling discrete values, but the coefficients are harder to interpret. Lastly, I validate my models with posterior predictive checks and interpret the results of the modeling exercise and conclude.
 
 # Exploratory data analysis
 <!-- I load the necessary packages and libraries first. -->
@@ -62,12 +59,12 @@ library(knitr)
 ####
 ```
 
-- The datasets I use are the:
+The datasets I use are the:
   - individual covariate information
   - borrowing money in village 74 (adjacency matrix indicating who borrowed money from whom)
   - social engagement in village 74 (adjacency matrix indicating who socially engages with whom)
 
-- In order to explore the datasets, we want to first understand how many people/nodes in the village actually have covariate information. Data collection in the field and in developing countries can often be difficult and so there is a lot of missing covariate information. Ultimately I find that there are 193 nodes with covariate information
+In order to explore the datasets, we want to first understand how many people/nodes in the village actually have covariate information. Data collection in the field and in developing countries can often be difficult and so there is a lot of missing covariate information. Ultimately I find that there are 193 nodes with covariate information
 
 
 <!-- Now I import the necessary datasets. -->
@@ -75,20 +72,31 @@ library(knitr)
 #############
 #village 74
 #############
+dir <- c("/Users/Advait/Desktop/Advait/0_archive/New_School/Fall17/Network_data/credit_caste_religion_India/")
+
 #import the ids of individuals in village 74
-ind_ids_74 <- read.csv("/Users/Advait/Desktop/New_School/Fall17/Network_data/village_data/datav4.0/Data/1. Network Data/Adjacency Matrix Keys/key_vilno_74.csv",header = F)
+ind_ids_74 <- read.csv(paste0(dir,
+                              "key_vilno_74.csv"),
+                       header = F)
 
 #Borrowing Money
-bor_money_74 <- read.csv("/Users/Advait/Desktop/New_School/Fall17/Network_data/village_data/datav4.0/Data/1. Network Data/Adjacency Matrices/adj_borrowmoney_vilno_74.csv", header = F)
+bor_money_74 <- read.csv(paste0(dir,
+                              "adj_borrowmoney_vilno_74.csv"),
+                       header = F)
+
 
 #Social Engagement
-social_eng_74 <- read.csv("/Users/Advait/Desktop/New_School/Fall17/Network_data/village_data/datav4.0/Data/1. Network Data/Adjacency Matrices/adj_nonrel_vilno_74.csv", header = F)
+social_eng_74 <- read.csv(paste0(dir,
+                              "adj_nonrel_vilno_74.csv"),
+                       header = F)
 
 
 #Remember to drop rows and columns for nodes that dont have covariate information!
 #import covariate info
 #give the vertices attributes, tricky because of missing data
-indiv_data <- read.dta("/Users/Advait/Desktop/New_School/Fall17/Network_data/village_data/datav4.0/Data/2. Demographics and Outcomes/individual_characteristics.dta")
+indiv_data <- read.dta(paste0(dir,
+                              "individual_characteristics.dta"))
+
 ```
 
 ```{r, echo = F}
@@ -115,7 +123,7 @@ test2 <- test2[good_ind_id_74$integer_ident,good_ind_id_74$integer_ident]
 dim(test2)
 ```
 
-- I then make the necessary network objects. Once I have changed the simple adjacency matrices into network objects, I am able to plot the degree distribution. Below we can see the degree distributions of these networks. The degree distribution appears to be positively skewed with few popular or high degree nodes and most nodes with a low degree.
+I then make the necessary network objects. Once I have changed the simple adjacency matrices into network objects, I am able to plot the degree distribution. Below we can see the degree distributions of these networks. The degree distribution appears to be positively skewed with few popular or high degree nodes and most nodes with a low degree.
 ```{r, echo = FALSE}
 #Make network objects
 #borowing
@@ -154,7 +162,7 @@ hist(degree(net_good_soc_74),
      xlim = c(0,20))
 ```
 
-- Now I examine the covariate information and add the "caste" information as a node level covariate to the network object. After adding the node level covariate as an attribute, I summarize the important network statitics below.
+Now I examine the covariate information and add the "caste" information as a node level covariate to the network object. After adding the node level covariate as an attribute, I summarize the important network statitics below.
 
 ```{r, echo = F, results = F}
 #EXPLORE attributes
@@ -224,7 +232,7 @@ set.vertex.attribute(net_good_soc_74,
 # summary.network(net_good_soc_74,
 #                 print.adj = FALSE)
 ```
- - I plot the networks of borrowing and social engagement side by side with nodes colored to represent caste. The node sizes reflect the degree of each node. We observe that there are mostly OBC (other backward class) and SC (scheduled caste) nodes with very few general and just one ST (scheduled tribe) node. OBC, general/forward, SC, ST account for roughly 41%, 31%, 19% and 9% of the Indian population total. It is surprising that even though there are only 3 "general" nodes they appear to be quite popular and have decent access to credit. This becomes even more significant at the time of modeling. The one ST node is also a potential challenge to modeling as inference is difficult with smaller sample sizes.
+I plot the networks of borrowing and social engagement side by side with nodes colored to represent caste. The node sizes reflect the degree of each node. We observe that there are mostly OBC (other backward class) and SC (scheduled caste) nodes with very few general and just one ST (scheduled tribe) node. OBC, general/forward, SC, ST account for roughly 41%, 31%, 19% and 9% of the Indian population total. It is surprising that even though there are only 3 "general" nodes they appear to be quite popular and have decent access to credit. This becomes even more significant at the time of modeling. The one ST node is also a potential challenge to modeling as inference is difficult with smaller sample sizes.
 
 <!-- I prepare the networks for plotting by adding atrribute based colors. -->
 ```{r, echo=F}
@@ -358,17 +366,11 @@ for(i in 1:num_nodes){
 <!-- The "hindu" nodes are orange and the "islam" nodes are green. -->
 
 # Hierarchical Models
-- I set up a normal model and a Poisson model to capture the relationship between social engagement and access to credit. 
-
-- As mentioned in the introduction, the normal model fits a hierarchical linear regression and is useful because it has easily interpretable coefficients. Each coefficient can be seen as the effect on the outcome variable. The drawbacks of the normal distribution for modeling degrees of nodes are that, (i) the support of the normal distribution extends into the negative half of the real line and (ii) it is a continuous distribution, and we are modeling discrete degrees of nodes, which is not strictly correct.
-
-- The Poisson model is appropriate because we model a discrete distribution for count data and given that we are modeling degree distributions this seems more correct. 
-
-- The Poisson model performs marginally better than the Normal model in its ability to predict the longer right hand tail of the degree distribution and the positively skewed nature of the degree distribution.
+I set up a normal model and a Poisson model to capture the relationship between social engagement and access to credit. As mentioned in the introduction, the normal model fits a hierarchical linear regression and is useful because it has easily interpretable coefficients. Each coefficient can be seen as the effect on the outcome variable. The drawbacks of the normal distribution for modeling degrees of nodes are that, (i) the support of the normal distribution extends into the negative half of the real line and (ii) it is a continuous distribution, and we are modeling discrete degrees of nodes, which is not strictly correct. The Poisson model is appropriate because we model a discrete distribution for count data and given that we are modeling degree distributions this seems more correct. The Poisson model performs marginally better than the Normal model in its ability to predict the longer right hand tail of the degree distribution and the positively skewed nature of the degree distribution. I use Stan [@carpenter2017stan] to sample from the joint posterior of the observed and unobservable quantities. Stan uses a Hamiltonian Monte Carlo (HMC) algorithm (one from a broader class of MCMC sampling methods) [@betancourt2017conceptual] to accomplish this. The posterior distribution is proportional to the product of the prior and likelihood.
 
 <!-- - I first consider "caste" level effects and then "religion" level effects. It might be possible to build both effects into one model but I have not done this for now as I would prefer to interpret these coefficients separately. -->
 
-- I use Stan [@carpenter2017stan] to sample from the joint posterior of the observed and unobservable quantities. Stan uses a Hamiltonian Monte Carlo (HMC) algorithm (one from a broader class of MCMC sampling methods) [@betancourt2017conceptual] to accomplish this. The posterior distribution is proportional to the product of the prior and likelihood.
+
 
 <!-- #-------------------------------------# -->
 <!-- # Caste # -->
@@ -439,12 +441,12 @@ generated quantities{
 }
 "
 fit1 <- stan(model_code = apsta_4,
-             data = list("N",
-                         "deg_74",
-                         "cas_74",
-                         "deg_social_eng"),
-             iter = 1000,
-             chains = 3)
+             data = list(N = N,
+                         deg_74 = deg_74,
+                         cas_74 = cas_74,
+                         deg_social_eng = deg_social_eng),
+             iter = 2000,
+             chains = 4)
 ```
 
 ### Posterior distribution of the estimated parameters
@@ -529,6 +531,9 @@ points(colMeans(ext1$b1)[order(colMeans(ext1$b1))],
      col = "black",
      pch = 16,
      cex = 0.8)
+abline(v = 0,
+       lty = 3,
+       col = "gray")
 # legend('topleft',
 #        legend = c("estimate", "95% posterior interval"),
 #        col = c("black", "gray"),
@@ -538,12 +543,9 @@ points(colMeans(ext1$b1)[order(colMeans(ext1$b1))],
 #        cex = 0.8,
 #        text.col = "black" )
 ```
-- The posterior intervals of the $\beta_1$ parameters and there are 4 (one for each caste) corresponding to "general", "OBC", "SC" and "ST" respectively. 
-- We see that even with three data points the model picks up on the fact that being of the "general" category predisposes you to have a higher degree in the borrowing network. This suggests that the historically "upper" caste, despite being a minority has more access to credit. This is potentially an important result. It is worthwhile to check this with other networks that have different compositions of castes to make sure that this conclusion holds there as well. 
+The posterior intervals of the $\beta_1$ parameters and there are 4 (one for each caste) corresponding to "general", "OBC", "SC" and "ST" respectively. We see that even with three data points the model picks up on the fact that being of the "general" category predisposes you to have a higher degree in the borrowing network. This suggests that the historically "upper" caste, despite being a minority has more access to credit. This is potentially an important result. It is worthwhile to check this with other networks that have different compositions of castes to make sure that this conclusion holds there as well. The "general" and "ST" coefficients having very large error bars or uncertainty intervals. This is because there are only 3 general nodes and 1 ST node. 
 
-- The "general" and "ST" coefficients having very large error bars or uncertainty intervals. This is because there are only 3 general nodes and 1 ST node. 
-
-- It is interesting that despite the small samples in these two groups we are able to obtain stable regression coefficients. We also find that the general group's coefficient is highest. The general, SC and OBC posterior distributions exclude 0, and the ST interval includes 0. This suggests that there may be an effect for the first three but not for ST. However this could also be because there is only one ST node and inherently brings in uncertainty into the estimate. The model needs to be scaled to other networks to examine the patterns.
+It is interesting that despite the small samples in these two groups we are able to obtain stable regression coefficients. We also find that the general group's coefficient is highest. The general, SC and OBC posterior distributions exclude 0, and the ST interval includes 0. This suggests that there may be an effect for the first three but not for ST. However this could also be because there is only one ST node and inherently brings in uncertainty into the estimate. The model needs to be scaled to other networks to examine the patterns.
 
 ### Posterior predictive checking
 I now engage in posterior predictive checking. Using my normal model I predict the degree distribution for the borrowing network and compare it to the raw data. I plot the histogram of the raw data. The light blue lines are simulated values for the dependent variable (degree of nodes in the borrowing network). The black line is the true density distribution of the dependent variable.
@@ -572,7 +574,7 @@ lines(density(deg_74),
       col = "black")
 
 ```
- - We see that the normal distribution has a longer right tail, but it cannot quite capture the positively skewed degree distribution. The mean of the simulations is slightly to the right of the true distribution. This is because we have modeled the distribution of degrees as normal when it is clearly poisitively skewed and the outcome variable is non negative integral values. 
+We see that the normal distribution has a longer right tail, but it cannot quite capture the positively skewed degree distribution. The mean of the simulations is slightly to the right of the true distribution. This is because we have modeled the distribution of degrees as normal when it is clearly poisitively skewed and the outcome variable is non negative integral values. 
 
 ## Poisson model for caste level effects
 
@@ -620,12 +622,12 @@ generated quantities{
 }
 "
 fit2 <- stan(model_code = apsta_5,
-             data = list("N",
-                         "deg_74",
-                         "cas_74",
-                         "deg_social_eng"),
-             iter = 1000,
-             chains = 3)
+             data = list(N = N,
+                         deg_74 = deg_74,
+                         cas_74 = cas_74,
+                         deg_social_eng = deg_social_eng),
+             iter = 2000,
+             chains = 4)
 ```
 
 ### Posterior distribution of the estimated parameters
@@ -701,6 +703,9 @@ points(colMeans(ext2$b1)[order(colMeans(ext2$b1))],
      col = "black",
      pch = 16,
      cex = 0.8)
+abline(v = 0,
+       lty = 3,
+       col = "gray")
 # legend('bottomright',
 #        legend = c("estimate", "95% posterior interval"),
 #        col = c("black", "gray"),
@@ -710,11 +715,7 @@ points(colMeans(ext2$b1)[order(colMeans(ext2$b1))],
 #        cex = 0.8,
 #        text.col = "black" )
 ```
- - We estimate 4  values once again, for each caste under considertaion. This time we see that the ST coefficient is the highest followed by the general coefficient. 
- 
- - This is a different result than with the normal model where the general coefficient was clearly higher. However, my suspicion is that this purely due to the fact that we have just one data point for ST nodes and the large error bars also suggest that this estimate is not stable. It is still surprising that the general coefficient is higher than the other two ("OBC" and "SC"), somewhat corroborating the result from the normal model. 
-
-- This is merely an introductory exercise and a pattern worth examining in closer detail.
+We estimate 4  values once again, for each caste under considertaion. This time we see that the ST coefficient is the highest followed by the general coefficient. This is a different result than with the normal model where the general coefficient was clearly higher. However, my suspicion is that this purely due to the fact that we have just one data point for ST nodes and the large error bars also suggest that this estimate is not stable. It is still surprising that the general coefficient is higher than the other two ("OBC" and "SC"), somewhat corroborating the result from the normal model. This is merely an introductory exercise and a pattern worth examining in closer detail.
 
 ### Posterior predictive checking
 I now plot the posterior predctive checks for the Poisson model with caste effects. Using the Poisson model I predict the degree distribution for the borrowing network and compare it to the raw data. I plot the histogram of the raw data. The light blue lines are simulated values for the dependent variable (degree of nodes in the borrowing network). The black line is the true density distribution of the dependent variable.
@@ -742,21 +743,17 @@ for(i in 1:1000){
 lines(density(deg_74),
       col = "black")
 ```
- - We see that the Poisson distribution captures the positively skewed nature of the distribution. The Poisson model slightly underestimates the density at the mode but has aptly caught and predicted the long right tail. The Poisson model performs better than the normal model in that it captures the central tendency of the degree distribution in borrowing networks as well as the spread of values. 
+We see that the Poisson distribution captures the positively skewed nature of the distribution. The Poisson model slightly underestimates the density at the mode but has aptly caught and predicted the long right tail. The Poisson model performs better than the normal model in that it captures the central tendency of the degree distribution in borrowing networks as well as the spread of values. 
  
 # Conclusions
-- We observe that degree centrality in the social engagement network is a good predictor of degree centrality in the borrowing network. Social engagement and access to credit are positively related. This is an interesting result and allows the researcher to delve deeper into the dynamics of social engagement in order to introduce social interventions that will aid access to credit in villages.
+We observe that degree centrality in the social engagement network is a good predictor of degree centrality in the borrowing network. Social engagement and access to credit are positively related. This is an interesting result and allows the researcher to delve deeper into the dynamics of social engagement in order to introduce social interventions that will aid access to credit in villages.
 
-- We see that the Poisson model fits the data better than the normal model and predicts the data well. The Poisson model better captures the positively skewed nature of the data and the long right hand tail of the degree distribution in borrowing networks. It slighlty underpredicts the density at the mode.
+We see that the Poisson model fits the data better than the normal model and predicts the data well. The Poisson model better captures the positively skewed nature of the data and the long right hand tail of the degree distribution in borrowing networks. It slighlty underpredicts the density at the mode.
 
-- Importantly, we find out that belonging to the "general" caste usually means more access to credit, for a given level of social engagement. In the normal model we find that the "general" coefficient is the highest and in the Poisson model we find that it is second highest, although the "ST" coefficient has very high uncertainty in both cases because there is only one "ST" node in the village.
+Importantly, we find out that belonging to the "general" caste usually means more access to credit, for a given level of social engagement. In the normal model we find that the "general" coefficient is the highest and in the Poisson model we find that it is second highest, although the "ST" coefficient has very high uncertainty in both cases because there is only one "ST" node in the village.
 
-- As standard practice in Bayesian studies, we must leave the model open for expansion and checking. We performed some posterior predictive checks here but we could potentially expand these models, try different parametrizations and predictors and update our results.
+As standard practice in Bayesian studies, we must leave the model open for expansion and checking. We performed some posterior predictive checks here but we could potentially expand these models, try different parametrizations and predictors and update our results.
 
-- Criticisms we can offer for the models are:
-  - network statistics other than "degree" have not been examined and this ignores a lot of information. Importantly "assortativity", "homophily" and "between-ness centrality" should be explored more carefully. 
-  - We have to include many other covariates like religion, and other demographic data and understand if these reults still persist.
-  - The missing data also should be accounted for as a lot of information is thrown out when we drop nodes. 
-  - This is a study of only one village and the focus is on developing a method that can be scaled to other villages. Scaling this method to other village networks is the next step to ensure generalizability of reults. The multilevel nature of the model should be expanded to incorporate the other villages in the network dataset into the study in a meaningful way.
+Criticisms we can offer for the models are, (i) network statistics other than "degree" have not been examined and this ignores a lot of information. Importantly "assortativity", "homophily" and "between-ness centrality" should be explored more carefully (ii) we have to include many other covariates like religion, and other demographic data and understand if these reults still persist, (iii) the missing data also should be accounted for as a lot of information is thrown out when we drop nodes, (iv) this is a study of only one village and the focus is on developing a method that can be scaled to other villages. Scaling this method to other village networks is the next step to ensure generalizability of reults. The multilevel nature of the model should be expanded to incorporate the other villages in the network dataset into the study in a meaningful way.
 
 # References
